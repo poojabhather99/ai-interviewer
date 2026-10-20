@@ -45,6 +45,23 @@ class GroqLLM:  # pragma: no cover - needs network and a key
         return r.choices[0].message.content.strip()
 
 
+class HFLLM:  # pragma: no cover - needs network and a token
+    """Hugging Face Inference Providers via huggingface_hub (token read from HF_TOKEN)."""
+
+    def __init__(self, model: str | None = None):
+        from huggingface_hub import InferenceClient
+
+        self.client = InferenceClient(token=os.environ["HF_TOKEN"])
+        self.model = model or os.environ.get("HF_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
+
+    def complete(self, prompt: str) -> str:
+        r = self.client.chat_completion(
+            model=self.model, messages=[{"role": "user", "content": prompt}],
+            temperature=0.3, max_tokens=400,
+        )
+        return r.choices[0].message.content.strip()
+
+
 def _field(prompt: str, name: str) -> str:
     for line in prompt.splitlines():
         if line.startswith(f"{name}:"):
@@ -53,4 +70,8 @@ def _field(prompt: str, name: str) -> str:
 
 
 def get_llm() -> LLM:
-    return GroqLLM() if os.environ.get("GROQ_API_KEY") else OfflineLLM()
+    if os.environ.get("GROQ_API_KEY"):
+        return GroqLLM()
+    if os.environ.get("HF_TOKEN"):
+        return HFLLM()
+    return OfflineLLM()
