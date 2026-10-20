@@ -45,3 +45,7 @@ Each answer is scored 0 to 1 on depth (length, capped near 80 words), structure 
 - Prompt-injection handling is mitigation, not a guarantee.
 - No authentication or rate limiting; put it behind a gateway before exposing it.
 - The React frontend from the prototype is not included.
+
+## Hosting on Hugging Face Spaces
+
+A `Dockerfile` is included. Create a Docker Space, push this repo's files plus `deploy/space/README.md` as the Space's `README.md`, and add the secret `HF_TOKEN` (Settings, Variables and secrets). With the token the app uses a hosted model; without it, it runs in offline mode. The hosted-model path is not covered by tests and has not been run against a live model.
