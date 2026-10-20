@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/poojabhather99/ai-interviewer/actions/workflows/ci.yml/badge.svg)](https://github.com/poojabhather99/ai-interviewer/actions/workflows/ci.yml)
 
+**Live demo (runs in your browser):** https://poojabhather99.github.io/ai-interviewer/
+
 An API that runs an adaptive technical interview: it generates one question at a time from the candidate's skill, role, job description and (optionally) resume, scores each answer, and produces a report.
 
 This is a clean rewrite of an earlier prototype that used AWS Bedrock with in-memory sessions. The rewrite changes the parts that matter for running it for real:

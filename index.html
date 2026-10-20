@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Interviewer demo</title>
+<link rel="icon" href="data:,">
+<meta name="description" content="Start an interview, answer the questions, and get a scored report. Sessions are stored in SQLite (in your browser's memory here).">
+<style>
+:root{--bg:#fafaf8;--fg:#1c1c1a;--mut:#6b6b66;--card:#fff;--line:#e3e2dc;--acc:#1f6f5c;--accfg:#fff;--bad:#a8321f;--ok:#1f6f5c;--code:#f2f1ec}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--fg:#ecebe5;--mut:#a09f98;--card:#1d1d1b;--line:#33332f;--acc:#4cb89d;--accfg:#10201b;--bad:#ef8a75;--ok:#4cb89d;--code:#242421}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:1.7rem;margin:0 0 6px}
+h2{font-size:1.05rem;margin:28px 0 10px}
+p.lead{color:var(--mut);margin:0 0 14px}
+a{color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:12px 0}
+label{display:block;font-size:.85rem;color:var(--mut);margin:10px 0 4px}
+input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+textarea{min-height:110px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.85rem}
+button{background:var(--acc);color:var(--accfg);border:0;border-radius:8px;padding:9px 14px;font:inherit;font-weight:600;cursor:pointer;margin:8px 8px 0 0}
+button.alt{background:transparent;color:var(--acc);border:1px solid var(--acc)}
+button:disabled{opacity:.5;cursor:wait}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>*{flex:1 1 180px}
+pre{background:var(--code);padding:10px 12px;border-radius:8px;overflow:auto;font-size:.82rem;white-space:pre-wrap;word-break:break-word;margin:6px 0}
+table{border-collapse:collapse;width:100%;font-size:.88rem}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}
+.tag{margin-left:8px;display:inline-block;padding:1px 8px;border-radius:99px;font-size:.78rem;border:1px solid var(--line)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.mut{color:var(--mut)}
+#status{font-size:.9rem;color:var(--mut);margin:8px 0}
+.bubble{padding:8px 12px;border-radius:12px;margin:6px 0;max-width:92%;white-space:pre-wrap;border:1px solid var(--line)}
+.me{margin-left:auto;background:var(--acc);color:var(--accfg);border-color:var(--acc)}
+footer{margin-top:36px;color:var(--mut);font-size:.88rem}
+</style>
+</head>
+<body>
+<main>
+<h1>Adaptive interview with scoring</h1>
+<p class="lead">Start an interview, answer the questions, and get a scored report. Sessions are stored in SQLite (in your browser's memory here).</p>
+<p class="mut" style="font-size:.9rem">This page runs the project's actual Python source in your browser (via Pyodide). Nothing is sent to a server. <a href="https://github.com/poojabhather99/ai-interviewer">View the code on GitHub</a>.</p>
+<div id="status">Loading Python (first visit can take 10 to 20 seconds)...</div>
+<div id="app" hidden>
+
+<div id="setup" class="card">
+<div class="row"><div><label for="skill">Skill</label><input id="skill" value="Python"></div>
+<div><label for="role">Role</label><input id="role" value="Data Engineer"></div>
+<div><label for="nq">Questions</label><select id="nq"><option>3</option><option selected>5</option></select></div></div>
+<label for="jd">Job description</label><textarea id="jd" style="min-height:70px">Build and monitor data pipelines for program KPIs.</textarea>
+<label for="resume">Resume text (optional)</label><textarea id="resume" style="min-height:70px"></textarea>
+<button id="start">Start interview</button>
+</div>
+<div id="live" class="card" hidden>
+<div id="qno" class="mut"></div><p id="question" style="font-weight:600"></p>
+<textarea id="answer" style="min-height:100px" placeholder="Type your answer. Try a short vague one, then a detailed one with numbers and reasoning."></textarea>
+<button id="submit">Submit answer</button><div id="last" class="mut"></div>
+</div>
+<div id="report" class="card" hidden></div>
+
+</div>
+<footer>Without an API key the questions come from a fixed five-step ladder; this page uses that offline mode. Scores measure the form of an answer (depth, structure, specifics), not whether it is technically correct. The hosted API (FastAPI) is in the repo; this page runs its interview and scoring logic directly.</footer>
+</main>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+const FILES = ["src/interviewer/__init__.py", "src/interviewer/llm.py", "src/interviewer/store.py", "src/interviewer/scoring.py", "src/interviewer/service.py"];
+const PACKAGES = ["sqlite3"];
+const PY = String.raw`
+import json
+from interviewer.llm import OfflineLLM
+from interviewer.service import Interviewer, InterviewError
+from interviewer.store import Store
+store = Store()
+svc = Interviewer(store, OfflineLLM())
+def start(skill, role, nq, jd, resume):
+    rid = store.save_resume(resume) if resume.strip() else None
+    return json.dumps(svc.start(skill=skill, designation=role, experience="3", depth="medium",
+                                job_description=jd, resume_id=rid, max_questions=int(nq)))
+def answer(sid, text):
+    try:
+        return json.dumps(svc.answer(sid, text))
+    except InterviewError as e:
+        return json.dumps({"error": str(e)})
+def report(sid):
+    return json.dumps(svc.report(sid))
+`;
+const $ = (id) => document.getElementById(id);
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+let py;
+async function boot() {
+  try {
+    py = await loadPyodide();
+    if (PACKAGES.length) { $('status').textContent = 'Loading ' + PACKAGES.join(', ') + '...'; await py.loadPackage(PACKAGES); }
+    const base = new URL('.', location.href).href;
+    for (const f of FILES) {
+      const r = await fetch(base + f);
+      if (!r.ok) throw new Error('could not load ' + f + ' (' + r.status + ')');
+      py.FS.mkdirTree('/app/' + f.split('/').slice(0, -1).join('/'));
+      py.FS.writeFile('/app/' + f, await r.text());
+    }
+    py.runPython("import sys; sys.path.insert(0, '/app/src')");
+    py.runPython(PY);
+    $('status').remove(); $('app').hidden = false;
+    init();
+  } catch (e) { $('status').textContent = 'Could not start the demo: ' + e.message; $('status').className = 'bad'; }
+}
+const call = (fn, ...args) => JSON.parse(py.globals.get(fn)(...args));
+
+let sid = null;
+function showQ(r) { $('qno').textContent = 'Question ' + (r.index + 1); $('question').textContent = r.question; $('answer').value = ''; }
+function init() {
+  $('start').onclick = () => {
+    const r = call('start', $('skill').value, $('role').value, $('nq').value, $('jd').value, $('resume').value);
+    sid = r.session_id; $('setup').hidden = true; $('live').hidden = false; $('report').hidden = true; showQ(r);
+  };
+  $('submit').onclick = () => {
+    if (!$('answer').value.trim()) return;
+    const r = call('answer', sid, $('answer').value);
+    if (r.error) { $('last').textContent = r.error; return; }
+    $('last').textContent = 'Last answer scores: ' + JSON.stringify(r.scores);
+    if (r.done) { $('live').hidden = true; renderReport(call('report', sid)); } else showQ(r);
+  };
+}
+function renderReport(rep) {
+  const o = $('report'); o.hidden = false; o.replaceChildren();
+  o.append(el('h2', 'Report'), el('pre', JSON.stringify(rep.average_scores, null, 2)), el('p', rep.note, 'mut'));
+  rep.transcript.forEach((t, i) => { const d = el('div'); d.append(el('strong', (i + 1) + '. ' + t.q), el('p', t.a || ''), el('span', t.scores ? JSON.stringify(t.scores) : '', 'tag')); o.append(d); });
+  const b = el('button', 'Start another', 'alt'); b.onclick = () => { $('setup').hidden = false; o.hidden = true; }; o.append(b);
+}
+
+boot();
+</script>
+</body>
+</html>
