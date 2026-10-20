@@ -123,3 +123,11 @@ def test_api_validation_and_errors():
     big = b"a" * (5 * 1024 * 1024 + 10)
     assert c.post("/resume", files={"file": ("big.txt", big)}).status_code == 413
     assert c.get("/health").json() == {"ok": True}
+
+
+def test_get_llm_defaults_to_offline(monkeypatch):
+    from interviewer.llm import OfflineLLM, get_llm
+
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    assert isinstance(get_llm(), OfflineLLM)
